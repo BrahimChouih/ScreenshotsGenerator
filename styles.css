@@ -1487,9 +1487,12 @@ input[type="range"]::-webkit-slider-thumb {
     }
 
     #preview-canvas {
+        /* Use height constraint + width:auto to preserve aspect ratio */
+        height: auto;
+        width: auto;
         max-height: 45vh;
-        max-width: 100%;
-        /* Don't set explicit width/height - let it scale proportionally */
+        max-width: calc(100vw - 32px);
+        /* aspect-ratio is set dynamically via JS based on output dimensions */
     }
 
     #threejs-container {

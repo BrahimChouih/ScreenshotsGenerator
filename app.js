@@ -2016,12 +2016,23 @@ function updateCanvas() {
     canvas.width = dims.width;
     canvas.height = dims.height;
 
-    // Scale for preview
-    const maxPreviewWidth = 400;
-    const maxPreviewHeight = 700;
-    const scale = Math.min(maxPreviewWidth / dims.width, maxPreviewHeight / dims.height);
-    canvas.style.width = (dims.width * scale) + 'px';
-    canvas.style.height = (dims.height * scale) + 'px';
+    // Check if we're on mobile (viewport width <= 768px)
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+        // On mobile, use aspect-ratio and let CSS handle sizing
+        canvas.style.aspectRatio = `${dims.width} / ${dims.height}`;
+        canvas.style.width = '';
+        canvas.style.height = '';
+    } else {
+        // Scale for preview on desktop
+        const maxPreviewWidth = 400;
+        const maxPreviewHeight = 700;
+        const scale = Math.min(maxPreviewWidth / dims.width, maxPreviewHeight / dims.height);
+        canvas.style.width = (dims.width * scale) + 'px';
+        canvas.style.height = (dims.height * scale) + 'px';
+        canvas.style.aspectRatio = '';
+    }
 
     // Draw background
     drawBackground();
@@ -3256,3 +3267,13 @@ if (document.readyState === 'loading') {
 
 // Also init on load (backup)
 window.addEventListener('load', safeInitMobile);
+
+// Handle viewport resize (orientation changes, window resize)
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    // Debounce to avoid excessive updates
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        updateCanvas();
+    }, 100);
+});
