@@ -2909,20 +2909,27 @@ function drawText() {
             const y = currentY + i * lineHeight;
             ctx.fillText(line, dims.width / 2, y);
 
+            // Calculate text metrics for decorations
+            // When textBaseline is 'top', y is at top of text; when 'bottom', y is at bottom
+            const textWidth = ctx.measureText(line).width;
+            const fontSize = text.headlineSize;
+            const lineThickness = Math.max(2, fontSize * 0.05);
+            const x = dims.width / 2 - textWidth / 2;
+
             // Draw underline
             if (text.headlineUnderline) {
-                const textWidth = ctx.measureText(line).width;
-                const underlineY = y + text.headlineSize * 0.15;
-                const underlineThickness = Math.max(2, text.headlineSize * 0.05);
-                ctx.fillRect(dims.width / 2 - textWidth / 2, underlineY, textWidth, underlineThickness);
+                const underlineY = text.position === 'top'
+                    ? y + fontSize * 0.9  // Below text when baseline is top
+                    : y + fontSize * 0.1; // Below text when baseline is bottom
+                ctx.fillRect(x, underlineY, textWidth, lineThickness);
             }
 
             // Draw strikethrough
             if (text.headlineStrikethrough) {
-                const textWidth = ctx.measureText(line).width;
-                const strikeY = y - text.headlineSize * 0.3;
-                const strikeThickness = Math.max(2, text.headlineSize * 0.05);
-                ctx.fillRect(dims.width / 2 - textWidth / 2, strikeY, textWidth, strikeThickness);
+                const strikeY = text.position === 'top'
+                    ? y + fontSize * 0.4  // Middle of text when baseline is top
+                    : y - fontSize * 0.4; // Middle of text when baseline is bottom
+                ctx.fillRect(x, strikeY, textWidth, lineThickness);
             }
         });
 
@@ -2944,20 +2951,26 @@ function drawText() {
             const y = subY + i * lineHeight;
             ctx.fillText(line, dims.width / 2, y);
 
+            // Calculate text metrics for decorations
+            const textWidth = ctx.measureText(line).width;
+            const fontSize = text.subheadlineSize;
+            const lineThickness = Math.max(2, fontSize * 0.05);
+            const x = dims.width / 2 - textWidth / 2;
+
             // Draw underline
             if (text.subheadlineUnderline) {
-                const textWidth = ctx.measureText(line).width;
-                const underlineY = y + text.subheadlineSize * 0.15;
-                const underlineThickness = Math.max(2, text.subheadlineSize * 0.05);
-                ctx.fillRect(dims.width / 2 - textWidth / 2, underlineY, textWidth, underlineThickness);
+                const underlineY = text.position === 'top'
+                    ? y + fontSize * 0.9
+                    : y + fontSize * 0.1;
+                ctx.fillRect(x, underlineY, textWidth, lineThickness);
             }
 
             // Draw strikethrough
             if (text.subheadlineStrikethrough) {
-                const textWidth = ctx.measureText(line).width;
-                const strikeY = y - text.subheadlineSize * 0.3;
-                const strikeThickness = Math.max(2, text.subheadlineSize * 0.05);
-                ctx.fillRect(dims.width / 2 - textWidth / 2, strikeY, textWidth, strikeThickness);
+                const strikeY = text.position === 'top'
+                    ? y + fontSize * 0.4
+                    : y - fontSize * 0.4;
+                ctx.fillRect(x, strikeY, textWidth, lineThickness);
             }
         });
     }
