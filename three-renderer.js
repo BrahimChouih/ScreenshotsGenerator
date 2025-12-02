@@ -9,6 +9,7 @@ let customScreenPlane = null;
 let orbitControls = null;
 let isThreeJSInitialized = false;
 let phoneModelLoaded = false;
+let phoneModelLoading = false;
 
 // Screen texture for the screenshot
 let screenTexture = null;
@@ -18,6 +19,29 @@ let baseModelScale = 1;
 
 // Store base position offset to keep model centered after screen alignment
 let basePositionOffset = { x: 0, y: 0, z: 0 };
+
+// Current device model type
+let currentDeviceModel = 'iphone';
+
+// Device-specific configurations
+const deviceConfigs = {
+    iphone: {
+        modelPath: 'models/iphone-15-pro-max.glb',
+        aspectRatio: 1290 / 2796,
+        screenHeightFactor: 0.82,
+        screenOffset: { x: 0.025, y: 0.745, z: 0.098 },
+        positionOffsetFactor: 0.81,
+        cornerRadiusFactor: 0.15
+    },
+    samsung: {
+        modelPath: 'models/samsung-galaxy-s25-ultra.glb',
+        aspectRatio: 1440 / 3120,
+        screenHeightFactor: 0.66,
+        screenOffset: { x: 0, y: 0, z: 0.1 },  // Will need adjustment
+        positionOffsetFactor: 0.5,
+        cornerRadiusFactor: 0.12
+    }
+};
 
 // Initialize Three.js scene
 function initThreeJS() {
@@ -83,20 +107,33 @@ function initThreeJS() {
 
     isThreeJSInitialized = true;
 
-    // Load the phone model
+    // Load the phone model - check state for which device to use
+    let deviceToLoad = 'iphone';
+    if (typeof state !== 'undefined' && typeof getScreenshotSettings === 'function') {
+        const ss = getScreenshotSettings();
+        if (ss?.device3D) {
+            deviceToLoad = ss.device3D;
+        }
+    }
+    currentDeviceModel = deviceToLoad;
     loadPhoneModel();
 
     // Start animation loop
     animateThreeJS();
 }
 
-// Load the iPhone 3D model
+// Load the phone 3D model based on currentDeviceModel
 function loadPhoneModel() {
+    if (phoneModelLoading) return; // Prevent double loading
+    phoneModelLoading = true;
+
+    const config = deviceConfigs[currentDeviceModel] || deviceConfigs.iphone;
     const loader = new THREE.GLTFLoader();
 
     loader.load(
-        'models/iphone-15-pro-max.glb',
+        config.modelPath,
         (gltf) => {
+            phoneModelLoading = false;
             phoneModel = gltf.scene;
 
             // Center and scale the model
@@ -197,6 +234,101 @@ function loadPhoneModel() {
     );
 }
 
+// Switch to a different phone model
+function switchPhoneModel(deviceType) {
+    if (!deviceConfigs[deviceType]) {
+        console.error('Unknown device type:', deviceType);
+        return;
+    }
+
+    // Skip if same device and already loaded or loading
+    if (currentDeviceModel === deviceType && (phoneModelLoaded || phoneModelLoading)) {
+        return;
+    }
+
+    // Update current device type
+    currentDeviceModel = deviceType;
+    phoneModelLoading = false; // Reset so we can load the new one
+
+    // Remove current model from scene
+    if (phoneModel && threeScene) {
+        threeScene.remove(phoneModel);
+        phoneModel.traverse((child) => {
+            if (child.isMesh) {
+                child.geometry?.dispose();
+                child.material?.dispose();
+            }
+        });
+        phoneModel = null;
+    }
+
+    // Clean up screen plane
+    if (customScreenPlane) {
+        if (customScreenPlane.parent) {
+            customScreenPlane.parent.remove(customScreenPlane);
+        }
+        customScreenPlane.geometry?.dispose();
+        customScreenPlane.material?.dispose();
+        customScreenPlane = null;
+    }
+
+    screenMesh = null;
+    phoneModelLoaded = false;
+
+    // Load new model using the config
+    const config = deviceConfigs[currentDeviceModel];
+    const loader = new THREE.GLTFLoader();
+
+    loader.load(
+        config.modelPath,
+        (gltf) => {
+            phoneModel = gltf.scene;
+
+            // Center and scale the model
+            const box = new THREE.Box3().setFromObject(phoneModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+
+            phoneModel.position.sub(center);
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            baseModelScale = 3.75 / maxDim;
+            phoneModel.scale.setScalar(baseModelScale);
+
+            // Create screen overlay for this device
+            createScreenOverlay();
+
+            threeScene.add(phoneModel);
+            phoneModelLoaded = true;
+
+            // Apply settings
+            if (typeof state !== 'undefined') {
+                updateThreeJSBackground();
+                const ss = typeof getScreenshotSettings === 'function' ? getScreenshotSettings() : state.defaults?.screenshot;
+                const rotation3D = ss?.rotation3D || { x: 0, y: 0, z: 0 };
+                setThreeJSRotation(rotation3D.x, rotation3D.y, rotation3D.z);
+
+                if (state.screenshots.length > 0) {
+                    updateScreenTexture();
+                }
+
+                if (typeof updateCanvas === 'function') {
+                    updateCanvas();
+                }
+            }
+
+            console.log(deviceType + ' model loaded successfully');
+        },
+        (progress) => {
+            const percent = Math.round(progress.loaded / progress.total * 100);
+            console.log('Loading ' + deviceType + ' model... ' + percent + '%');
+        },
+        (error) => {
+            console.error('Error loading ' + deviceType + ' model:', error);
+        }
+    );
+}
+
 // Create a custom screen plane overlay with correct UV mapping
 function createScreenOverlay() {
     if (customScreenPlane) {
@@ -207,11 +339,11 @@ function createScreenOverlay() {
         customScreenPlane.material.dispose();
     }
 
-    // iPhone 15 Pro Max aspect ratio is 1290/2796
-    const aspectRatio = 1290 / 2796;
+    const config = deviceConfigs[currentDeviceModel] || deviceConfigs.iphone;
 
-    // Use fixed dimensions - slightly smaller to fit within bezels
-    const planeHeight = 4.3 * 0.82; // 82% of phone height for screen area
+    // Use device-specific aspect ratio and screen size
+    const aspectRatio = config.aspectRatio;
+    const planeHeight = 4.3 * config.screenHeightFactor;
     const planeWidth = planeHeight * aspectRatio;
 
     const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
@@ -223,7 +355,7 @@ function createScreenOverlay() {
     customScreenPlane = new THREE.Mesh(geometry, material);
 
     // Position at center of phone, slightly in front of glass
-    const screenOffset = { x: 0.025, y: 0.745, z: 0.098 };
+    const screenOffset = config.screenOffset;
     customScreenPlane.position.set(screenOffset.x, screenOffset.y, screenOffset.z);
 
     // Add directly to phoneModel so it rotates with it
@@ -231,10 +363,9 @@ function createScreenOverlay() {
 
     // Store base position offset to compensate for screen alignment
     // This keeps the overall model centered in view
-    // Use half the offset since the screen is not at the very edge of the phone
-    basePositionOffset.y = -screenOffset.y * baseModelScale * 0.81;
+    basePositionOffset.y = -screenOffset.y * baseModelScale * config.positionOffsetFactor;
 
-    console.log('Created screen overlay at:', customScreenPlane.position);
+    console.log('Created screen overlay for ' + currentDeviceModel + ' at:', customScreenPlane.position);
     console.log('Plane size:', planeWidth.toFixed(4), 'x', planeHeight.toFixed(4));
 }
 
