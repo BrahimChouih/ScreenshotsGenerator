@@ -642,7 +642,7 @@ async function renderFontList(pickerId, ids) {
                  data-font-category="${font.category}">
                 <span class="font-option-name" style="font-family: ${isLoaded ? font.value : 'inherit'}">${font.name}</span>
                 ${isLoading ? '<span class="font-option-loading">Loading...</span>' :
-                  `<span class="font-option-category">${font.category}</span>`}
+                `<span class="font-option-category">${font.category}</span>`}
             </div>
         `;
     }).join('');
@@ -830,37 +830,37 @@ function openDatabase() {
     return new Promise((resolve, reject) => {
         try {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
-            
+
             request.onerror = (event) => {
                 console.error('IndexedDB error:', event.target.error);
                 // Continue without database
                 resolve(null);
             };
-            
+
             request.onsuccess = () => {
                 db = request.result;
                 resolve(db);
             };
-            
+
             request.onupgradeneeded = (event) => {
                 const database = event.target.result;
-                
+
                 // Delete old store if exists (from version 1)
                 if (database.objectStoreNames.contains('state')) {
                     database.deleteObjectStore('state');
                 }
-                
+
                 // Create projects store
                 if (!database.objectStoreNames.contains(PROJECTS_STORE)) {
                     database.createObjectStore(PROJECTS_STORE, { keyPath: 'id' });
                 }
-                
+
                 // Create meta store for project list and current project
                 if (!database.objectStoreNames.contains(META_STORE)) {
                     database.createObjectStore(META_STORE, { keyPath: 'key' });
                 }
             };
-            
+
             request.onblocked = () => {
                 console.warn('Database upgrade blocked. Please close other tabs.');
                 resolve(null);
@@ -875,15 +875,15 @@ function openDatabase() {
 // Load project list and current project
 async function loadProjectsMeta() {
     if (!db) return;
-    
+
     return new Promise((resolve) => {
         try {
             const transaction = db.transaction([META_STORE], 'readonly');
             const store = transaction.objectStore(META_STORE);
-            
+
             const projectsReq = store.get('projects');
             const currentReq = store.get('currentProject');
-            
+
             transaction.oncomplete = () => {
                 if (projectsReq.result) {
                     projects = projectsReq.result.value;
@@ -894,7 +894,7 @@ async function loadProjectsMeta() {
                 updateProjectSelector();
                 resolve();
             };
-            
+
             transaction.onerror = () => resolve();
         } catch (e) {
             resolve();
@@ -905,7 +905,7 @@ async function loadProjectsMeta() {
 // Save project list and current project
 function saveProjectsMeta() {
     if (!db) return;
-    
+
     try {
         const transaction = db.transaction([META_STORE], 'readwrite');
         const store = transaction.objectStore(META_STORE);
@@ -938,11 +938,21 @@ function updateProjectSelector() {
         const screenshotCount = project.id === currentProjectId ? state.screenshots.length : (project.screenshotCount || 0);
 
         option.innerHTML = `
-            <span class="project-option-name">${project.name}</span>
-            <span class="project-option-meta">${screenshotCount} screenshot${screenshotCount !== 1 ? 's' : ''}</span>
+            <div class="project-option-info">
+                <span class="project-option-name">${project.name}</span>
+                <span class="project-option-meta">${screenshotCount} screenshot${screenshotCount !== 1 ? 's' : ''}</span>
+            </div>
+            <button class="project-export-btn" data-project-id="${project.id}" title="Export this project">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </button>
         `;
 
-        option.addEventListener('click', (e) => {
+        // Click on option info area switches project
+        option.querySelector('.project-option-info').addEventListener('click', (e) => {
             e.stopPropagation();
             if (project.id !== currentProjectId) {
                 switchProject(project.id);
@@ -950,8 +960,46 @@ function updateProjectSelector() {
             document.getElementById('project-dropdown').classList.remove('open');
         });
 
+        // Click on export button exports that project
+        option.querySelector('.project-export-btn').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            document.getElementById('project-dropdown').classList.remove('open');
+
+            // If exporting current project, use current state
+            if (project.id === currentProjectId) {
+                exportProjectAsFile();
+            } else {
+                // Export a different project - need to load its data first
+                await exportProjectById(project.id, project.name);
+            }
+        });
+
         menu.appendChild(option);
     });
+
+    // Add divider and import action
+    const divider = document.createElement('div');
+    divider.className = 'project-menu-divider';
+    menu.appendChild(divider);
+
+    // Import button (only import, removed export from here)
+    const importBtn = document.createElement('button');
+    importBtn.className = 'project-menu-action';
+    importBtn.id = 'import-project-btn';
+    importBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Import Project...
+    `;
+    importBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('project-dropdown').classList.remove('open');
+        document.getElementById('import-project-input').click();
+    });
+    menu.appendChild(importBtn);
 }
 
 // Initialize
@@ -1063,13 +1111,13 @@ function migrate3DPosition(screenshotSettings) {
 // Load state from IndexedDB for current project
 function loadState() {
     if (!db) return Promise.resolve();
-    
+
     return new Promise((resolve) => {
         try {
             const transaction = db.transaction([PROJECTS_STORE], 'readonly');
             const store = transaction.objectStore(PROJECTS_STORE);
             const request = store.get(currentProjectId);
-            
+
             request.onsuccess = () => {
                 const parsed = request.result;
                 if (parsed) {
@@ -1249,7 +1297,7 @@ function loadState() {
                 }
                 resolve();
             };
-            
+
             request.onerror = () => {
                 console.error('Error loading state:', request.error);
                 resolve();
@@ -1365,10 +1413,10 @@ function resetStateToDefaults() {
 async function switchProject(projectId) {
     // Save current project first
     saveState();
-    
+
     currentProjectId = projectId;
     saveProjectsMeta();
-    
+
     // Reset and load new project
     resetStateToDefaults();
     await loadState();
@@ -1425,7 +1473,284 @@ async function deleteProject() {
     updateProjectSelector();
 }
 
-// Sync UI controls with current state
+// Export current project as a JSON file
+async function exportProjectAsFile() {
+    const project = projects.find(p => p.id === currentProjectId);
+    if (!project) {
+        await showAppAlert('No project to export', 'error');
+        return;
+    }
+
+    const exportBtn = document.getElementById('export-project-btn');
+    if (exportBtn) exportBtn.classList.add('loading');
+
+    try {
+        // Prepare screenshots data with base64 images
+        const screenshotsToExport = state.screenshots.map(s => {
+            // Export localized images (with src as base64 data URLs)
+            const localizedImages = {};
+            if (s.localizedImages) {
+                Object.keys(s.localizedImages).forEach(lang => {
+                    const langData = s.localizedImages[lang];
+                    if (langData?.src) {
+                        localizedImages[lang] = {
+                            src: langData.src,
+                            name: langData.name
+                        };
+                    }
+                });
+            }
+
+            return {
+                name: s.name,
+                deviceType: s.deviceType,
+                localizedImages: localizedImages,
+                background: s.background,
+                screenshot: s.screenshot,
+                text: s.text,
+                overrides: s.overrides
+            };
+        });
+
+        // Build export object
+        const exportData = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            appVersion: 'yuzu.shot 1.0',
+            project: {
+                name: project.name,
+                formatVersion: 2
+            },
+            state: {
+                screenshots: screenshotsToExport,
+                outputDevice: state.outputDevice,
+                customWidth: state.customWidth,
+                customHeight: state.customHeight,
+                currentLanguage: state.currentLanguage,
+                projectLanguages: state.projectLanguages,
+                defaults: state.defaults
+            }
+        };
+
+        // Convert to JSON and create blob
+        const jsonString = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+
+        // Sanitize project name for filename
+        const sanitizedName = project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.download = `${sanitizedName}.screenshotproject`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        await showAppAlert(`Project "${project.name}" exported successfully!`, 'success');
+    } catch (error) {
+        console.error('Error exporting project:', error);
+        await showAppAlert('Failed to export project: ' + error.message, 'error');
+    } finally {
+        if (exportBtn) exportBtn.classList.remove('loading');
+    }
+}
+
+// Export a project by its ID (for exporting non-current projects from dropdown)
+async function exportProjectById(projectId, projectName) {
+    try {
+        // Load project data from IndexedDB
+        if (!db) {
+            await showAppAlert('Database not available', 'error');
+            return;
+        }
+
+        const projectData = await new Promise((resolve, reject) => {
+            const transaction = db.transaction([PROJECTS_STORE], 'readonly');
+            const store = transaction.objectStore(PROJECTS_STORE);
+            const request = store.get(projectId);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(new Error('Failed to load project data'));
+        });
+
+        if (!projectData) {
+            await showAppAlert('Project data not found', 'error');
+            return;
+        }
+
+        // Build export object from stored data
+        const exportData = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            appVersion: 'yuzu.shot 1.0',
+            project: {
+                name: projectName,
+                formatVersion: projectData.formatVersion || 2
+            },
+            state: {
+                screenshots: projectData.screenshots || [],
+                outputDevice: projectData.outputDevice || 'iphone-6.9',
+                customWidth: projectData.customWidth || 1290,
+                customHeight: projectData.customHeight || 2796,
+                currentLanguage: projectData.currentLanguage || 'en',
+                projectLanguages: projectData.projectLanguages || ['en'],
+                defaults: projectData.defaults || state.defaults
+            }
+        };
+
+        // Convert to JSON and create blob
+        const jsonString = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+
+        // Sanitize project name for filename
+        const sanitizedName = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.download = `${sanitizedName}.screenshotproject`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        await showAppAlert(`Project "${projectName}" exported successfully!`, 'success');
+    } catch (error) {
+        console.error('Error exporting project:', error);
+        await showAppAlert('Failed to export project: ' + error.message, 'error');
+    }
+}
+
+// Import project from a JSON file
+async function importProjectFromFile(file) {
+    const importBtn = document.getElementById('import-project-btn');
+    if (importBtn) importBtn.classList.add('loading');
+
+    try {
+        // Read file content
+        const fileContent = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+
+        // Parse JSON
+        let importData;
+        try {
+            importData = JSON.parse(fileContent);
+        } catch (e) {
+            throw new Error('Invalid file format. Expected a valid JSON file.');
+        }
+
+        // Validate import data structure
+        if (!importData.version || !importData.project || !importData.state) {
+            throw new Error('Invalid project file format. Missing required fields.');
+        }
+
+        // Create new project with imported name (add suffix if name exists)
+        let projectName = importData.project.name || 'Imported Project';
+        const existingProject = projects.find(p => p.name === projectName);
+        if (existingProject) {
+            projectName = `${projectName} (imported)`;
+        }
+
+        // Create the new project
+        const projectId = 'project_' + Date.now();
+        projects.push({ id: projectId, name: projectName, screenshotCount: 0 });
+        saveProjectsMeta();
+
+        // Switch to the new project
+        currentProjectId = projectId;
+
+        // Reset state
+        state.screenshots = [];
+        state.selectedIndex = 0;
+        state.outputDevice = importData.state.outputDevice || 'iphone-6.9';
+        state.customWidth = importData.state.customWidth || 1290;
+        state.customHeight = importData.state.customHeight || 2796;
+        state.currentLanguage = importData.state.currentLanguage || 'en';
+        state.projectLanguages = importData.state.projectLanguages || ['en'];
+
+        if (importData.state.defaults) {
+            state.defaults = importData.state.defaults;
+        }
+
+        // Restore screenshots with their images
+        const importedScreenshots = importData.state.screenshots || [];
+        for (const screenshotData of importedScreenshots) {
+            // Recreate localized images with Image objects
+            const localizedImages = {};
+            if (screenshotData.localizedImages) {
+                for (const lang of Object.keys(screenshotData.localizedImages)) {
+                    const langData = screenshotData.localizedImages[lang];
+                    if (langData?.src) {
+                        // Create Image object from base64
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = () => reject(new Error(`Failed to load image for ${lang}`));
+                            img.src = langData.src;
+                        });
+
+                        localizedImages[lang] = {
+                            image: img,
+                            src: langData.src,
+                            name: langData.name
+                        };
+                    }
+                }
+            }
+
+            // Get first image as the primary image (for legacy compatibility)
+            let primaryImage = null;
+            const firstLang = Object.keys(localizedImages)[0];
+            if (firstLang) {
+                primaryImage = localizedImages[firstLang].image;
+            }
+
+            // Create screenshot entry
+            const screenshot = {
+                image: primaryImage,
+                name: screenshotData.name || 'Imported Screenshot',
+                deviceType: screenshotData.deviceType,
+                localizedImages: localizedImages,
+                background: screenshotData.background || JSON.parse(JSON.stringify(state.defaults.background)),
+                screenshot: screenshotData.screenshot || JSON.parse(JSON.stringify(state.defaults.screenshot)),
+                text: screenshotData.text || JSON.parse(JSON.stringify(state.defaults.text)),
+                overrides: screenshotData.overrides || {}
+            };
+
+            state.screenshots.push(screenshot);
+        }
+
+        // Save the imported state
+        saveState();
+
+        // Update UI
+        state.selectedIndex = 0;
+        updateProjectSelector();
+        updateScreenshotList();
+        syncUIWithState();
+        updateCanvas();
+        updateLanguageButton();
+
+        await showAppAlert(`Project "${projectName}" imported successfully with ${state.screenshots.length} screenshot(s)!`, 'success');
+    } catch (error) {
+        console.error('Error importing project:', error);
+        await showAppAlert('Failed to import project: ' + error.message, 'error');
+    } finally {
+        if (importBtn) importBtn.classList.remove('loading');
+        // Reset the file input
+        document.getElementById('import-project-input').value = '';
+    }
+}
+
 function syncUIWithState() {
     // Update language button
     updateLanguageButton();
@@ -1706,6 +2031,14 @@ function setupEventListeners() {
         document.getElementById('delete-project-message').textContent =
             `Are you sure you want to delete "${project ? project.name : 'this project'}"? This cannot be undone.`;
         document.getElementById('delete-project-modal').classList.add('visible');
+    });
+
+    // Import project file input change handler (export/import buttons are created dynamically in updateProjectSelector)
+    document.getElementById('import-project-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            importProjectFromFile(file);
+        }
     });
 
     // Project modal buttons
@@ -2035,11 +2368,11 @@ function setupEventListeners() {
             document.querySelectorAll('#bg-type-selector button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             setBackground('type', btn.dataset.type);
-            
+
             document.getElementById('gradient-options').style.display = btn.dataset.type === 'gradient' ? 'block' : 'none';
             document.getElementById('solid-options').style.display = btn.dataset.type === 'solid' ? 'block' : 'none';
             document.getElementById('image-options').style.display = btn.dataset.type === 'image' ? 'block' : 'none';
-            
+
             updateCanvas();
         });
     });
@@ -2086,12 +2419,12 @@ function setupEventListeners() {
         swatch.addEventListener('click', () => {
             document.querySelectorAll('.preset-swatch').forEach(s => s.classList.remove('selected'));
             swatch.classList.add('selected');
-            
+
             // Parse gradient from preset
             const gradientStr = swatch.dataset.gradient;
             const angleMatch = gradientStr.match(/(\d+)deg/);
             const colorMatches = gradientStr.matchAll(/(#[a-fA-F0-9]{6})\s+(\d+)%/g);
-            
+
             if (angleMatch) {
                 const angle = parseInt(angleMatch[1]);
                 setBackground('gradient.angle', angle);
@@ -2107,7 +2440,7 @@ function setupEventListeners() {
                 setBackground('gradient.stops', stops);
                 updateGradientStopsUI();
             }
-            
+
             updateCanvas();
         });
     });
@@ -2194,7 +2527,7 @@ function setupEventListeners() {
     });
 
     // Noise toggle
-    document.getElementById('noise-toggle').addEventListener('click', function() {
+    document.getElementById('noise-toggle').addEventListener('click', function () {
         this.classList.toggle('active');
         const noiseEnabled = this.classList.contains('active');
         setBackground('noise', noiseEnabled);
@@ -2247,7 +2580,7 @@ function setupEventListeners() {
     });
 
     // Shadow toggle
-    document.getElementById('shadow-toggle').addEventListener('click', function() {
+    document.getElementById('shadow-toggle').addEventListener('click', function () {
         this.classList.toggle('active');
         const shadowEnabled = this.classList.contains('active');
         setScreenshotSetting('shadow.enabled', shadowEnabled);
@@ -2293,7 +2626,7 @@ function setupEventListeners() {
     });
 
     // Frame toggle
-    document.getElementById('frame-toggle').addEventListener('click', function() {
+    document.getElementById('frame-toggle').addEventListener('click', function () {
         this.classList.toggle('active');
         const frameEnabled = this.classList.contains('active');
         setScreenshotSetting('frame.enabled', frameEnabled);
@@ -2335,7 +2668,7 @@ function setupEventListeners() {
     });
 
     // Headline toggle
-    document.getElementById('headline-toggle').addEventListener('click', function() {
+    document.getElementById('headline-toggle').addEventListener('click', function () {
         this.classList.toggle('active');
         const enabled = this.classList.contains('active');
         setTextValue('headlineEnabled', enabled);
@@ -2351,7 +2684,7 @@ function setupEventListeners() {
     });
 
     // Subheadline toggle
-    document.getElementById('subheadline-toggle').addEventListener('click', function() {
+    document.getElementById('subheadline-toggle').addEventListener('click', function () {
         this.classList.toggle('active');
         const enabled = this.classList.contains('active');
         setTextValue('subheadlineEnabled', enabled);
@@ -2783,16 +3116,16 @@ function addSubheadlineLanguage(lang, flag) {
 function removeHeadlineLanguage(lang) {
     const text = getTextSettings();
     if (lang === 'en') return; // Can't remove default
-    
+
     const index = text.headlineLanguages.indexOf(lang);
     if (index > -1) {
         text.headlineLanguages.splice(index, 1);
         delete text.headlines[lang];
-        
+
         if (text.currentHeadlineLang === lang) {
             text.currentHeadlineLang = 'en';
         }
-        
+
         updateHeadlineLanguageUI();
         switchHeadlineLanguage(text.currentHeadlineLang);
         saveState();
@@ -2802,16 +3135,16 @@ function removeHeadlineLanguage(lang) {
 function removeSubheadlineLanguage(lang) {
     const text = getTextSettings();
     if (lang === 'en') return; // Can't remove default
-    
+
     const index = text.subheadlineLanguages.indexOf(lang);
     if (index > -1) {
         text.subheadlineLanguages.splice(index, 1);
         delete text.subheadlines[lang];
-        
+
         if (text.currentSubheadlineLang === lang) {
             text.currentSubheadlineLang = 'en';
         }
-        
+
         updateSubheadlineLanguageUI();
         switchSubheadlineLanguage(text.currentSubheadlineLang);
         saveState();
@@ -2848,7 +3181,7 @@ function updateSubheadlineLanguageUI() {
 let currentTranslateTarget = null;
 
 const languageNames = {
-    'en': 'English (US)', 'en-gb': 'English (UK)', 'de': 'German', 'fr': 'French', 
+    'en': 'English (US)', 'en-gb': 'English (UK)', 'de': 'German', 'fr': 'French',
     'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese', 'pt-br': 'Portuguese (BR)',
     'nl': 'Dutch', 'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean',
     'zh': 'Chinese (Simplified)', 'zh-tw': 'Chinese (Traditional)', 'ar': 'Arabic',
@@ -2861,9 +3194,9 @@ function openTranslateModal(target) {
     currentTranslateTarget = target;
     const text = getTextSettings();
     const isHeadline = target === 'headline';
-    
+
     document.getElementById('translate-target-type').textContent = isHeadline ? 'Headline' : 'Subheadline';
-    
+
     const languages = isHeadline ? text.headlineLanguages : text.subheadlineLanguages;
     const texts = isHeadline ? text.headlines : text.subheadlines;
 
@@ -2877,14 +3210,14 @@ function openTranslateModal(target) {
         if (index === 0) option.selected = true;
         sourceSelect.appendChild(option);
     });
-    
+
     // Update source preview
     updateTranslateSourcePreview();
-    
+
     // Populate target languages
     const targetsContainer = document.getElementById('translate-targets');
     targetsContainer.innerHTML = '';
-    
+
     languages.forEach(lang => {
         const item = document.createElement('div');
         item.className = 'translate-target-item';
@@ -2898,7 +3231,7 @@ function openTranslateModal(target) {
         `;
         targetsContainer.appendChild(item);
     });
-    
+
     document.getElementById('translate-modal').classList.add('visible');
 }
 
@@ -2908,7 +3241,7 @@ function updateTranslateSourcePreview() {
     const isHeadline = currentTranslateTarget === 'headline';
     const texts = isHeadline ? text.headlines : text.subheadlines;
     const sourceText = texts[sourceLang] || '';
-    
+
     document.getElementById('source-text-preview').textContent = sourceText || 'No text entered';
 }
 
@@ -3073,14 +3406,14 @@ Translate to these language codes: ${targetLangs.join(', ')}`;
 function showAppAlert(message, type = 'info') {
     return new Promise((resolve) => {
         const iconBg = type === 'error' ? 'rgba(255, 69, 58, 0.2)' :
-                       type === 'success' ? 'rgba(52, 199, 89, 0.2)' :
-                       'rgba(10, 132, 255, 0.2)';
+            type === 'success' ? 'rgba(52, 199, 89, 0.2)' :
+                'rgba(10, 132, 255, 0.2)';
         const iconColor = type === 'error' ? '#ff453a' :
-                          type === 'success' ? '#34c759' :
-                          'var(--accent)';
+            type === 'success' ? '#34c759' :
+                'var(--accent)';
         const iconPath = type === 'error' ? '<path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>' :
-                         type === 'success' ? '<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>' :
-                         '<path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+            type === 'success' ? '<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>' :
+                '<path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>';
 
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay visible';
@@ -4926,7 +5259,7 @@ function drawDeviceFrameToContext(context, x, y, width, height, settings) {
     context.strokeStyle = frameColor;
     context.lineWidth = frameWidth;
     context.beginPath();
-    context.roundRect(x - frameWidth/2, y - frameWidth/2, width + frameWidth, height + frameWidth, radius);
+    context.roundRect(x - frameWidth / 2, y - frameWidth / 2, width + frameWidth, height + frameWidth, radius);
     context.stroke();
     context.globalAlpha = 1;
 }
@@ -5230,7 +5563,7 @@ function drawDeviceFrame(x, y, width, height) {
     ctx.strokeStyle = frameColor;
     ctx.lineWidth = frameWidth;
     ctx.beginPath();
-    roundRect(ctx, x - frameWidth/2, y - frameWidth/2, width + frameWidth, height + frameWidth, radius);
+    roundRect(ctx, x - frameWidth / 2, y - frameWidth / 2, width + frameWidth, height + frameWidth, radius);
     ctx.stroke();
     ctx.globalAlpha = 1;
 }
@@ -5250,7 +5583,7 @@ function drawText() {
     if (!headline && !subheadline) return;
 
     const padding = dims.width * 0.08;
-    const textY = text.position === 'top' 
+    const textY = text.position === 'top'
         ? dims.height * (text.offsetY / 100)
         : dims.height * (1 - text.offsetY / 100);
 
