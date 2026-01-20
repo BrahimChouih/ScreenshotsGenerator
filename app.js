@@ -2814,6 +2814,11 @@ function setupEventListeners() {
         });
     });
 
+    // Reset position button (center position)
+    document.getElementById('reset-position-btn').addEventListener('click', () => {
+        resetPosition();
+    });
+
     // Device type selector (2D/3D)
     document.querySelectorAll('#device-type-selector button').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -4095,6 +4100,65 @@ function applyPositionPreset(preset) {
     document.getElementById('screenshot-rotation').value = p.rotation;
     document.getElementById('screenshot-rotation-value').textContent = formatValue(p.rotation) + '°';
 
+    updateCanvas();
+}
+
+// Reset position to centered defaults (works for both 2D and 3D)
+function resetPosition() {
+    const ss = getScreenshotSettings();
+    const is3D = ss.use3D;
+
+    // Reset common position settings
+    setScreenshotSetting('scale', 70);
+    setScreenshotSetting('x', 50);
+    setScreenshotSetting('y', 50);
+    setScreenshotSetting('rotation', 0);
+    setScreenshotSetting('perspective', 0);
+
+    // Reset 3D-specific settings if in 3D mode
+    if (is3D) {
+        setScreenshotSetting('rotation3D', { x: 0, y: 0, z: 0 });
+
+        // Update 3D rotation sliders if they exist
+        const rot3dX = document.getElementById('rotation-3d-x');
+        const rot3dY = document.getElementById('rotation-3d-y');
+        const rot3dZ = document.getElementById('rotation-3d-z');
+
+        if (rot3dX) {
+            rot3dX.value = 0;
+            document.getElementById('rotation-3d-x-value').textContent = '0°';
+        }
+        if (rot3dY) {
+            rot3dY.value = 0;
+            document.getElementById('rotation-3d-y-value').textContent = '0°';
+        }
+        if (rot3dZ) {
+            rot3dZ.value = 0;
+            document.getElementById('rotation-3d-z-value').textContent = '0°';
+        }
+
+        // Update Three.js rotation (scale is handled by updateCanvas via renderThreeJSToCanvas)
+        if (typeof setThreeJSRotation === 'function') {
+            setThreeJSRotation(0, 0, 0);
+        }
+    }
+
+    // Update 2D UI controls
+    document.getElementById('screenshot-scale').value = 70;
+    document.getElementById('screenshot-scale-value').textContent = '70%';
+    document.getElementById('screenshot-x').value = 50;
+    document.getElementById('screenshot-x-value').textContent = '50%';
+    document.getElementById('screenshot-y').value = 50;
+    document.getElementById('screenshot-y-value').textContent = '50%';
+    document.getElementById('screenshot-rotation').value = 0;
+    document.getElementById('screenshot-rotation-value').textContent = '0°';
+
+    // Update position preset active state (centered is now active)
+    document.querySelectorAll('.position-preset').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.preset === 'centered');
+    });
+
+    saveState();
     updateCanvas();
 }
 

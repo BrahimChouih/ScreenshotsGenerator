@@ -749,6 +749,38 @@ input[type="range"]::-webkit-slider-thumb {
     background: rgba(99, 102, 241, 0.1);
 }
 
+/* Reset position button */
+.reset-position-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reset-position-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(10, 132, 255, 0.1);
+}
+
+.reset-position-btn svg {
+    opacity: 0.7;
+}
+
+.reset-position-btn:hover svg {
+    opacity: 1;
+}
+
 /* Canvas area */
 .canvas-area {
     display: flex;
