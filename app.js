@@ -4162,6 +4162,57 @@ function resetPosition() {
     updateCanvas();
 }
 
+// Duplicate a screenshot with all its settings
+function duplicateScreenshot(index) {
+    if (index < 0 || index >= state.screenshots.length) return;
+
+    const original = state.screenshots[index];
+
+    // Deep clone the screenshot
+    const duplicate = {
+        // Copy the image reference (same image object)
+        image: original.image,
+        name: original.name + ' (copy)',
+        deviceType: original.deviceType,
+
+        // Deep clone localized images
+        localizedImages: {},
+
+        // Deep clone settings
+        background: JSON.parse(JSON.stringify(original.background)),
+        screenshot: JSON.parse(JSON.stringify(original.screenshot)),
+        text: JSON.parse(JSON.stringify(original.text)),
+        overrides: JSON.parse(JSON.stringify(original.overrides || {}))
+    };
+
+    // Copy localized images (with image object references)
+    if (original.localizedImages) {
+        Object.keys(original.localizedImages).forEach(lang => {
+            const langData = original.localizedImages[lang];
+            if (langData) {
+                duplicate.localizedImages[lang] = {
+                    image: langData.image, // Same image object reference
+                    src: langData.src,
+                    name: langData.name
+                };
+            }
+        });
+    }
+
+    // Insert duplicate after the original
+    state.screenshots.splice(index + 1, 0, duplicate);
+
+    // Select the new duplicate
+    state.selectedIndex = index + 1;
+
+    // Update UI
+    saveState();
+    updateScreenshotList();
+    syncUIWithState();
+    updateGradientStopsUI();
+    updateCanvas();
+}
+
 function handleFiles(files) {
     // Process files sequentially to handle duplicates one at a time
     processFilesSequentially(Array.from(files).filter(f => f.type.startsWith('image/')));
@@ -4410,6 +4461,13 @@ function updateScreenshotList() {
                         </svg>
                         Apply style to all...
                     </button>
+                    <button class="screenshot-menu-item screenshot-duplicate" data-index="${index}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Duplicate
+                    </button>
                     <button class="screenshot-menu-item screenshot-delete danger" data-index="${index}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M18 6L6 18M6 6l12 12"/>
@@ -4622,6 +4680,16 @@ function updateScreenshotList() {
                 e.stopPropagation();
                 menu?.classList.remove('open');
                 showApplyStyleModal(index);
+            });
+        }
+
+        // Duplicate button handler
+        const duplicateBtn = item.querySelector('.screenshot-duplicate');
+        if (duplicateBtn) {
+            duplicateBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu?.classList.remove('open');
+                duplicateScreenshot(index);
             });
         }
 
