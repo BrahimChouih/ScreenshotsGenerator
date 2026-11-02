@@ -302,11 +302,8 @@ function updateOverlaysList() {
         }
 
         const imgSrc = (ol.image && ol.image.src) ? ol.image.src : (ol.imageSrc || '');
-        const thumb = imgSrc ? `<img src="${imgSrc}" class="overlay-item-thumb">` : `<div class="overlay-item-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;">None</div>`;
-
         item.innerHTML = `
-            ${thumb}
-            <span class="overlay-item-name">${ol.name || 'Overlay ' + (index + 1)}</span>
+            <span class="overlay-item-name"></span>
             <div class="overlay-item-actions">
                 <button class="overlay-action-btn delete" title="Delete Overlay">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -316,6 +313,17 @@ function updateOverlaysList() {
                 </button>
             </div>
         `;
+
+        const thumb = document.createElement(imgSrc ? 'img' : 'div');
+        thumb.className = 'overlay-item-thumb';
+        if (imgSrc) {
+            thumb.src = imgSrc;
+        } else {
+            thumb.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;';
+            thumb.textContent = 'None';
+        }
+        item.prepend(thumb);
+        item.querySelector('.overlay-item-name').textContent = ol.name || 'Overlay ' + (index + 1);
 
         item.querySelector('.delete').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1212,6 +1220,19 @@ function initSync() {
 }
 
 // Save state to IndexedDB for current project
+function serializeScreenshotSettings(screenshot) {
+    const screenshotSettings = JSON.parse(JSON.stringify(screenshot || state.defaults.screenshot));
+    if (screenshotSettings.overlays) {
+        screenshotSettings.overlays.forEach((ol, idx) => {
+            const originalOl = screenshot?.overlays?.[idx];
+            if (originalOl?.image?.src) ol.imageSrc = originalOl.image.src;
+            delete ol.image;
+        });
+    }
+    delete screenshotSettings.overlay;
+    return screenshotSettings;
+}
+
 function saveState() {
     if (!db) return;
 
@@ -1232,21 +1253,7 @@ function saveState() {
         }
 
         // Prepare screenshot settings for saving
-        const screenshotSettings = JSON.parse(JSON.stringify(s.screenshot || state.defaults.screenshot));
-
-        // Handle multiple overlays: save image sources and remove Image objects
-        if (screenshotSettings.overlays) {
-            screenshotSettings.overlays.forEach((ol, idx) => {
-                const originalOl = (s.screenshot && s.screenshot.overlays) ? s.screenshot.overlays[idx] : null;
-                if (originalOl && originalOl.image && originalOl.image.src) {
-                    ol.imageSrc = originalOl.image.src;
-                }
-                delete ol.image;
-            });
-        }
-
-        // Clean up legacy singular overlay if it somehow still exists in settings
-        delete screenshotSettings.overlay;
+        const screenshotSettings = serializeScreenshotSettings(s.screenshot);
 
         return {
             src: s.image?.src || '', // Legacy compatibility
@@ -1790,7 +1797,7 @@ async function exportProjectAsFile() {
                 deviceType: s.deviceType,
                 localizedImages: localizedImages,
                 background: s.background,
-                screenshot: s.screenshot,
+                screenshot: serializeScreenshotSettings(s.screenshot),
                 text: s.text,
                 overrides: s.overrides
             };
@@ -2194,6 +2201,8 @@ function syncUIWithState() {
 
     document.getElementById('screenshot-x').value = ss.x;
     document.getElementById('screenshot-x-value').textContent = formatValue(ss.x) + '%';
+    document.getElementById('screenshot-y').value = ss.y;
+    document.getElementById('screenshot-y-value').textContent = formatValue(ss.y) + '%';
     document.getElementById('corner-radius').value = ss.cornerRadius;
     document.getElementById('corner-radius-value').textContent = formatValue(ss.cornerRadius) + 'px';
     document.getElementById('screenshot-rotation').value = ss.rotation;
